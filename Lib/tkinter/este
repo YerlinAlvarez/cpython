@@ -1,0 +1,111 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, scrolledtext
+import pandas as pd
+from datetime import time
+
+def organizar_horario(archivo_excel, programa_objetivo=None, semestre_objetivo=None):
+    # (Código de organizar_horario, modificado para devolver una cadena en lugar de imprimir)
+    try:
+        df = pd.read_excel(archivo_excel)
+    except FileNotFoundError:
+        return "Error: El archivo Excel no se encontró."
+
+    horario_organizado = {}
+    for index, row in df.iterrows():
+        programa = row['programa']
+        semestre = row['semestre']
+        dia = row['dia']
+        hora_inicio_str = str(row['horaInicio'])
+        try:
+            hora_inicio = pd.to_datetime(hora_inicio_str).time()
+        except ValueError:
+            hora_inicio = hora_inicio_str
+
+        if programa_objetivo and programa != programa_objetivo:
+            continue
+        if semestre_objetivo is not None and semestre != semestre_objetivo:
+            continue
+
+        if programa not in horario_organizado:
+            horario_organizado[programa] = {}
+        if semestre not in horario_organizado[programa]:
+            horario_organizado[programa][semestre] = {}
+        if dia not in horario_organizado[programa][semestre]:
+            horario_organizado[programa][semestre][dia] = []
+
+        info_clase = {
+            'codigo': row['codigo_asignatura'],
+            'nombre': row['nombre_asignatura'],
+            'grupo': row['grupo'],
+            'docente': row['docente'],
+            'creditos': row.get('creditos', 'N/A'),
+            'campus': row['sede'],
+            'salon': row['salon'],
+            'horaInicio': row['hora_inicio'],
+            'horaFin': row['horaFin']
+        }
+        horario_organizado[programa][semestre][dia].append(info_clase)
+
+    for programa in horario_organizado:
+        for semestre in horario_organizado[programa]:
+            for dia in horario_organizado[programa][semestre]:
+                horario_organizado[programa][semestre][dia].sort(key=lambda x: x['horaInicio'])
+
+    return horario_organizado
+
+def mostrar_horario_formateado(horario_organizado):
+    # (Código de mostrar_horario_formateado, modificado para devolver una cadena)
+    output_text = ""
+    for programa, semestres in horario_organizado.items():
+        output_text += f"\n{'='*30} HORARIO ACADÉMICO - {programa} {'='*30}\n"
+        for semestre, dias in semestres.items():
+            output_text += f"\n{'='*10} SEMESTRE {semestre} {'='*10}\n"
+            dias_ordenados = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO"]
+            for dia_semana in dias_ordenados:
+                if dia_semana.upper() in dias:
+                    output_text += f"\n--- {dia_semana} ---\n"
+                    for clase in dias[dia_semana.upper()]:
+                        hora_inicio_str = clase['horaInicio'].strftime('%I:%M %p') if isinstance(clase['horaInicio'], time) else clase['horaInicio']
+                        hora_fin_str = clase['horaFin'].strftime('%I:%M %p') if isinstance(clase['horaFin'], time) else clase['horaFin']
+                        output_text += f"  {hora_inicio_str} - {hora_fin_str}: {clase['nombre']} ({clase['codigo']})\n"
+                        output_text += f"    Grupo: {clase['grupo']}, Docente: {clase['docente']}\n"
+                        output_text += f"    Créditos: {clase['creditos']}, Campus: {clase['campus']}, Salón: {clase['salon']}\n"
+                elif any(dia.upper() in dias for dia in dias_ordenados):
+                    pass
+                elif semestre:
+                    output_text += "    No hay clases programadas para este semestre.\n"
+                    break
+            if not semestre:
+                output_text += "    No hay clases programadas para este programa.\n"
+    return output_text
+
+def procesar_y_mostrar_horario():
+    archivo_excel = filedialog.askopenfilename(title="Seleccionar archivo Excel", filetypes=[("Archivos Excel", "*.xlsx;*.xls")])
+    if archivo_excel:
+        try:
+            horario_organizado = organizar_horario(archivo_excel)
+            if isinstance(horario_organizado, str):
+                area_texto_horario.delete("1.0", tk.END)
+                area_texto_horario.insert("1.0", horario_organizado)
+            else:
+                horario_texto = mostrar_horario_formateado(horario_organizado)
+                area_texto_horario.delete("1.0", tk.END)
+                area_texto_horario.insert("1.0", horario_texto)
+        except Exception as e:
+            area_texto_horario.delete("1.0", tk.END)
+            area_texto_horario.insert("1.0", f"Ocurrió un error al procesar el archivo: {e}")
+
+# --- Interfaz Gráfica ---
+ventana = tk.Tk()
+ventana.title("Organizador de Horarios")
+ventana.geometry("800x600")
+
+etiqueta_instruccion = tk.Label(ventana, text="Selecciona el archivo Excel con los datos del horario:")
+boton_seleccionar_archivo = tk.Button(ventana, text="Buscar Archivo", command=procesar_y_mostrar_horario)
+area_texto_horario = scrolledtext.ScrolledText(ventana, wrap=tk.WORD)  # Para texto largo con scrollbar
+
+etiqueta_instruccion.pack(pady=10)
+boton_seleccionar_archivo.pack(pady=5)
+area_texto_horario.pack(expand=True, fill='both', padx=10, pady=10)
+
+ventana.mainloop()
